@@ -79,6 +79,8 @@ RUN apt-get -qq update \
     && apt-get -qq install --no-install-recommends --no-install-suggests -y \
     # coral drivers
     libedgetpu1-max python3-tflite-runtime python3-pycoral \
+    # Openvino GPU driver
+    # intel-opencl-icd\
     && pip3 install -U /wheels/*.whl \
     # jellyfin-ffmpeg
     && wget -O jellyfin.deb "https://repo.jellyfin.org/releases/server/debian/versions/jellyfin-ffmpeg/${JELLYFIN_FFMPEG_VERSION}/jellyfin-ffmpeg5_${JELLYFIN_FFMPEG_VERSION}-$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release )_$( dpkg --print-architecture ).deb" \
@@ -110,6 +112,9 @@ RUN apt-get -qq update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH=$PATH:/usr/lib/jellyfin-ffmpeg
+
+# Temp install. TODO: install with minimal dependencies
+RUN apt-get update && apt-get install -y libsm6 libxext6 intel-opencl-icd
 
 COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
 
