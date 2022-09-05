@@ -42,6 +42,20 @@ RUN pip3 install -r requirements.txt
 COPY requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
+# Download and Convert OpenVino model
+FROM debian:11 as ov-converter
+RUN apt-get update && apt-get install -y wget ffmpeg libsm6 libxext6 \
+    intel-opencl-icd python3 python3-pip unzip tzdata libxml2 xz-utils
+RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+    && python3 get-pip.py "pip"
+
+COPY requirements-ov.txt /requirements-ov.txt
+RUN pip install -r /requirements-ov.txt
+
+RUN mkdir /models
+RUN cd /models && omz_downloader --name ssdlite_mobilenet_v2
+RUN cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
+
 # Frigate Container
 FROM debian:11-slim
 ARG TARGETARCH
@@ -79,8 +93,6 @@ RUN apt-get -qq update \
     && apt-get -qq install --no-install-recommends --no-install-suggests -y \
     # coral drivers
     libedgetpu1-max python3-tflite-runtime python3-pycoral \
-    # Openvino GPU driver
-    # intel-opencl-icd\
     && pip3 install -U /wheels/*.whl \
     # jellyfin-ffmpeg
     && wget -O jellyfin.deb "https://repo.jellyfin.org/releases/server/debian/versions/jellyfin-ffmpeg/${JELLYFIN_FFMPEG_VERSION}/jellyfin-ffmpeg5_${JELLYFIN_FFMPEG_VERSION}-$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release )_$( dpkg --print-architecture ).deb" \
@@ -117,6 +129,10 @@ ENV PATH=$PATH:/usr/lib/jellyfin-ffmpeg
 RUN apt-get update && apt-get install -y libsm6 libxext6 intel-opencl-icd
 
 COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
+
+# Copy OpenVino model
+COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 /openvino-model
+RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O /openvino-model/coco_91cl_bkgr.txt
 
 # get model and labels
 COPY labelmap.txt /labelmap.txt
