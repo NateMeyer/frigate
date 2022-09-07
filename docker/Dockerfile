@@ -44,8 +44,11 @@ RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Download and Convert OpenVino model
 FROM debian:11 as ov-converter
-RUN apt-get update && apt-get install -y wget ffmpeg libsm6 libxext6 \
-    intel-opencl-icd python3 python3-pip unzip tzdata libxml2 xz-utils
+ARG TARGETARCH
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -qq update \
+    && apt-get -qq install -y wget python3 python3-distutils
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
 
@@ -101,6 +104,7 @@ RUN apt-get -qq update \
     # arch specific packages
     && if [ "${TARGETARCH}" = "amd64" ]; then \
     apt-get -qq install --no-install-recommends --no-install-suggests -y \
+    intel-opencl-icd \
     mesa-va-drivers intel-media-va-driver-non-free; \
     fi \
     && if [ "${TARGETARCH}" = "arm64" ]; then \
@@ -124,9 +128,6 @@ RUN apt-get -qq update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH=$PATH:/usr/lib/jellyfin-ffmpeg
-
-# Temp install. TODO: install with minimal dependencies
-RUN apt-get update && apt-get install -y libsm6 libxext6 intel-opencl-icd
 
 COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
 
