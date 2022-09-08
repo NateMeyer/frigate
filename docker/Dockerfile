@@ -40,6 +40,10 @@ COPY requirements.txt /requirements.txt
 RUN pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
+COPY requirements-wheels-amd64.txt /requirements-wheels-amd64.txt
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+    cat /requirements-wheels-amd64.txt >> /requirements-wheels.txt; \
+    fi
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Download and Convert OpenVino model
@@ -47,17 +51,25 @@ FROM debian:11 as ov-converter
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get -qq update \
-    && apt-get -qq install -y wget python3 python3-distutils
-RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
-    && python3 get-pip.py "pip"
-
+# Install OpenVino Runtime and Dev library
 COPY requirements-ov.txt /requirements-ov.txt
-RUN pip install -r /requirements-ov.txt
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+    apt-get -qq update \
+    && apt-get -qq install -y wget python3 python3-distutils \
+    && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+    && python3 get-pip.py "pip" \
+    && pip install -r /requirements-ov.txt; \
+    fi
 
-RUN mkdir /models
-RUN cd /models && omz_downloader --name ssdlite_mobilenet_v2
-RUN cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
+# Get OpenVino Model
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+    mkdir /models \
+    && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
+    && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16; \
+    else \
+    # If not building for amd64 arch, make empty placeholder folder
+    mkdir -p /models/public/ssdlite_mobilenet_v2/FP16; \
+    fi
 
 # Frigate Container
 FROM debian:11-slim
@@ -110,6 +122,7 @@ RUN apt-get -qq update \
     # arch specific packages
     && if [ "${TARGETARCH}" = "amd64" ]; then \
     apt-get -qq install --no-install-recommends --no-install-suggests -y \
+    # intel-opencl-icd specifically for GPU support in OpenVino
     intel-opencl-icd \
     mesa-va-drivers libva-drm2 intel-media-va-driver-non-free i965-va-driver libmfx1; \
     fi \
@@ -139,7 +152,11 @@ COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
 
 # Copy OpenVino model
 COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 /openvino-model
-RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O /openvino-model/coco_91cl_bkgr.txt
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+    wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O /openvino-model/coco_91cl_bkgr.txt; \
+    else \
+    rm -r /openvino-model; \
+    fi
 
 # get model and labels
 COPY labelmap.txt /labelmap.txt
