@@ -40,11 +40,14 @@ COPY requirements.txt /requirements.txt
 RUN pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
-COPY requirements-wheels-amd64.txt /requirements-wheels-amd64.txt
-RUN if [ "${TARGETARCH}" = "amd64" ]; then \
-    cat /requirements-wheels-amd64.txt >> /requirements-wheels.txt; \
-    fi
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+# Download the OpenVino python library
+RUN cd /wheels && \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
+    wget https://github.com/NateMeyer/openvino-wheels/releases/download/x86-64-2022.2/openvino-2022.2.0-000-cp39-cp39-manylinux_2_31_x86_64.whl; \
+    #elif [ "${TARGETARCH}" = "arm64" ]; then \
+    # wget arm64 whl; \
+    fi
 
 # Download and Convert OpenVino model
 FROM debian:11 as ov-converter
