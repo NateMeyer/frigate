@@ -8,6 +8,7 @@ import subprocess as sp
 import time
 from functools import reduce
 from pathlib import Path
+from urllib.parse import unquote
 
 import cv2
 
@@ -341,6 +342,7 @@ def event_thumbnail(id, max_cache_age=2592000):
 @bp.route("/<camera_name>/<label>/best.jpg")
 @bp.route("/<camera_name>/<label>/thumbnail.jpg")
 def label_thumbnail(camera_name, label):
+    label = unquote(label)
     if label == "any":
         event_query = (
             Event.select()
@@ -424,6 +426,7 @@ def event_snapshot(id):
 
 @bp.route("/<camera_name>/<label>/snapshot.jpg")
 def label_snapshot(camera_name, label):
+    label = unquote(label)
     if label == "any":
         event_query = (
             Event.select()
@@ -491,7 +494,7 @@ def event_clip(id):
 def events():
     limit = request.args.get("limit", 100)
     camera = request.args.get("camera", "all")
-    label = request.args.get("label", "all")
+    label = unquote(request.args.get("label", "all"))
     sub_label = request.args.get("sub_label", "all")
     zone = request.args.get("zone", "all")
     after = request.args.get("after", type=float)
@@ -753,9 +756,9 @@ def recordings(camera_name):
     return jsonify([e for e in recordings.dicts()])
 
 
-@bp.route("/<camera>/start/<int:start_ts>/end/<int:end_ts>/clip.mp4")
-@bp.route("/<camera>/start/<float:start_ts>/end/<float:end_ts>/clip.mp4")
-def recording_clip(camera, start_ts, end_ts):
+@bp.route("/<camera_name>/start/<int:start_ts>/end/<int:end_ts>/clip.mp4")
+@bp.route("/<camera_name>/start/<float:start_ts>/end/<float:end_ts>/clip.mp4")
+def recording_clip(camera_name, start_ts, end_ts):
     download = request.args.get("download", type=bool)
 
     recordings = (
@@ -765,7 +768,7 @@ def recording_clip(camera, start_ts, end_ts):
             | (Recordings.end_time.between(start_ts, end_ts))
             | ((start_ts > Recordings.start_time) & (end_ts < Recordings.end_time))
         )
-        .where(Recordings.camera == camera)
+        .where(Recordings.camera == camera_name)
         .order_by(Recordings.start_time.asc())
     )
 
@@ -780,36 +783,41 @@ def recording_clip(camera, start_ts, end_ts):
         if clip.end_time > end_ts:
             playlist_lines.append(f"outpoint {int(end_ts - clip.start_time)}")
 
-    file_name = f"clip_{camera}_{start_ts}-{end_ts}.mp4"
+    file_name = f"clip_{camera_name}_{start_ts}-{end_ts}.mp4"
     path = f"/tmp/cache/{file_name}"
 
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-y",
-        "-protocol_whitelist",
-        "pipe,file",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        "/dev/stdin",
-        "-c",
-        "copy",
-        "-movflags",
-        "+faststart",
-        path,
-    ]
+    if not os.path.exists(path):
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-protocol_whitelist",
+            "pipe,file",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            "/dev/stdin",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            path,
+        ]
+        p = sp.run(
+            ffmpeg_cmd,
+            input="\n".join(playlist_lines),
+            encoding="ascii",
+            capture_output=True,
+        )
 
-    p = sp.run(
-        ffmpeg_cmd,
-        input="\n".join(playlist_lines),
-        encoding="ascii",
-        capture_output=True,
-    )
-    if p.returncode != 0:
-        logger.error(p.stderr)
-        return f"Could not create clip from recordings for {camera}.", 500
+        if p.returncode != 0:
+            logger.error(p.stderr)
+            return f"Could not create clip from recordings for {camera_name}.", 500
+    else:
+        logger.debug(
+            f"Ignoring subsequent request for {path} as it already exists in the cache."
+        )
 
     response = make_response()
     response.headers["Content-Description"] = "File Transfer"
@@ -825,9 +833,9 @@ def recording_clip(camera, start_ts, end_ts):
     return response
 
 
-@bp.route("/vod/<camera>/start/<int:start_ts>/end/<int:end_ts>")
-@bp.route("/vod/<camera>/start/<float:start_ts>/end/<float:end_ts>")
-def vod_ts(camera, start_ts, end_ts):
+@bp.route("/vod/<camera_name>/start/<int:start_ts>/end/<int:end_ts>")
+@bp.route("/vod/<camera_name>/start/<float:start_ts>/end/<float:end_ts>")
+def vod_ts(camera_name, start_ts, end_ts):
     recordings = (
         Recordings.select()
         .where(
@@ -835,7 +843,7 @@ def vod_ts(camera, start_ts, end_ts):
             | Recordings.end_time.between(start_ts, end_ts)
             | ((start_ts > Recordings.start_time) & (end_ts < Recordings.end_time))
         )
-        .where(Recordings.camera == camera)
+        .where(Recordings.camera == camera_name)
         .order_by(Recordings.start_time.asc())
     )
 
@@ -846,16 +854,13 @@ def vod_ts(camera, start_ts, end_ts):
     for recording in recordings:
         clip = {"type": "source", "path": recording.path}
         duration = int(recording.duration * 1000)
-        # Determine if offset is needed for first clip
-        if recording.start_time < start_ts:
-            offset = int((start_ts - recording.start_time) * 1000)
-            clip["clipFrom"] = offset
-            duration -= offset
+
         # Determine if we need to end the last clip early
         if recording.end_time > end_ts:
             duration -= int((recording.end_time - end_ts) * 1000)
 
         if duration > 0:
+            clip["keyFrameDurations"] = [duration]
             clips.append(clip)
             durations.append(duration)
         else:
@@ -876,14 +881,14 @@ def vod_ts(camera, start_ts, end_ts):
     )
 
 
-@bp.route("/vod/<year_month>/<day>/<hour>/<camera>")
-def vod_hour(year_month, day, hour, camera):
+@bp.route("/vod/<year_month>/<day>/<hour>/<camera_name>")
+def vod_hour(year_month, day, hour, camera_name):
     start_date = datetime.strptime(f"{year_month}-{day} {hour}", "%Y-%m-%d %H")
     end_date = start_date + timedelta(hours=1) - timedelta(milliseconds=1)
     start_ts = start_date.timestamp()
     end_ts = end_date.timestamp()
 
-    return vod_ts(camera, start_ts, end_ts)
+    return vod_ts(camera_name, start_ts, end_ts)
 
 
 @bp.route("/vod/event/<id>")

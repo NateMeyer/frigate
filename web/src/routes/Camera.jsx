@@ -120,7 +120,7 @@ export default function Camera({ camera }) {
 
   return (
     <div className="space-y-4 p-2 px-4">
-      <Heading size="2xl">{camera}</Heading>
+      <Heading size="2xl">{camera.replaceAll('_', ' ')}</Heading>
       <ButtonsTabbed viewModes={['live', 'debug']} setViewMode={setViewMode} />
 
       {player}
@@ -133,8 +133,8 @@ export default function Camera({ camera }) {
               className="mb-4 mr-4"
               key={objectType}
               header={objectType}
-              href={`/events?camera=${camera}&label=${objectType}`}
-              media={<img src={`${apiHost}/api/${camera}/${objectType}/thumbnail.jpg`} />}
+              href={`/events?camera=${camera}&label=${encodeURIComponent(objectType)}`}
+              media={<img src={`${apiHost}/api/${camera}/${encodeURIComponent(objectType)}/thumbnail.jpg`} />}
             />
           ))}
         </div>
