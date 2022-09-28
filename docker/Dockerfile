@@ -89,6 +89,28 @@ ENV FLASK_ENV=development
 
 COPY --from=wheels /wheels /wheels
 
+# TEST - Build libUSB without udev.  Needed for Openvino NCS2 support
+WORKDIR /opt
+RUN apt-get update && apt-get install -y curl unzip build-essential automake libtool
+RUN curl -L https://github.com/libusb/libusb/archive/v1.0.25.zip --output v1.0.25.zip && \
+    unzip v1.0.25.zip && cd libusb-1.0.25 && \
+    ./bootstrap.sh && \
+    ./configure --disable-udev --enable-shared && \
+    make -j $(nproc --all)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libusb-1.0-0-dev && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/libusb-1.0.25/libusb
+RUN /bin/mkdir -p '/usr/local/lib' && \
+    /bin/bash ../libtool   --mode=install /usr/bin/install -c   libusb-1.0.la '/usr/local/lib' && \
+    /bin/mkdir -p '/usr/local/include/libusb-1.0' && \
+    /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
+    /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
+    cd  /opt/libusb-1.0.25/ && \
+    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
+    ldconfig
+
+
 # Install ffmpeg
 RUN apt-get -qq update \
     && apt-get -qq install --no-install-recommends -y \
