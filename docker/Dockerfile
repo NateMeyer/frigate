@@ -41,38 +41,24 @@ RUN pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
-# Download the OpenVino python library
-RUN cd /wheels && \
-    if [ "${TARGETARCH}" = "amd64" ]; then \
-    wget https://github.com/NateMeyer/openvino-wheels/releases/download/x86-64-2022.2/openvino-2022.2.0-000-cp39-cp39-manylinux_2_31_x86_64.whl; \
-    #elif [ "${TARGETARCH}" = "arm64" ]; then \
-    # wget arm64 whl; \
-    fi
 
 # Download and Convert OpenVino model
-FROM debian:11 as ov-converter
+FROM --platform=linux/amd64 debian:11 as ov-converter
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install OpenVino Runtime and Dev library
 COPY requirements-ov.txt /requirements-ov.txt
-RUN if [ "${TARGETARCH}" = "amd64" ]; then \
-    apt-get -qq update \
+RUN apt-get -qq update \
     && apt-get -qq install -y wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
-    && pip install -r /requirements-ov.txt; \
-    fi
+    && pip install -r /requirements-ov.txt
 
 # Get OpenVino Model
-RUN if [ "${TARGETARCH}" = "amd64" ]; then \
-    mkdir /models \
+RUN mkdir /models \
     && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
-    && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16; \
-    else \
-    # If not building for amd64 arch, make empty placeholder folder
-    mkdir -p /models/public/ssdlite_mobilenet_v2/FP16; \
-    fi
+    && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
 
 # Frigate Container
 FROM debian:11-slim
@@ -177,11 +163,7 @@ COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
 
 # Copy OpenVino model
 COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 /openvino-model
-RUN if [ "${TARGETARCH}" = "amd64" ]; then \
-    wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O /openvino-model/coco_91cl_bkgr.txt; \
-    else \
-    rm -r /openvino-model; \
-    fi
+RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O /openvino-model/coco_91cl_bkgr.txt
 
 # get model and labels
 COPY labelmap.txt /labelmap.txt
