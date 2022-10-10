@@ -60,22 +60,14 @@ RUN mkdir /models \
     && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
     && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
 
-# Frigate Container
-FROM debian:11-slim
+
+# libUSB - No Udev
+FROM debian:11 as libusb-build
 ARG TARGETARCH
 
-# https://askubuntu.com/questions/972516/debian-frontend-environment-variable
 ARG DEBIAN_FRONTEND="noninteractive"
-# http://stackoverflow.com/questions/48162574/ddg#49462622
-ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
-# https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(Native-GPU-Support)
-ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 
-ENV FLASK_ENV=development
-
-COPY --from=wheels /wheels /wheels
-
-# TEST - Build libUSB without udev.  Needed for Openvino NCS2 support
+# Build libUSB without udev.  Needed for Openvino NCS2 support
 WORKDIR /opt
 RUN apt-get update && apt-get install -y curl unzip build-essential automake libtool
 RUN curl -L https://github.com/libusb/libusb/archive/v1.0.25.zip --output v1.0.25.zip && \
@@ -96,6 +88,24 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
     /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
     ldconfig
 
+
+# Frigate Container
+FROM debian:11-slim
+ARG TARGETARCH
+
+# https://askubuntu.com/questions/972516/debian-frontend-environment-variable
+ARG DEBIAN_FRONTEND="noninteractive"
+# http://stackoverflow.com/questions/48162574/ddg#49462622
+ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
+# https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(Native-GPU-Support)
+ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
+
+ENV FLASK_ENV=development
+
+COPY --from=wheels /wheels /wheels
+COPY --from=libusb-build /usr/local/lib /usr/local/lib
+
+RUN ldconfig
 
 # Install ffmpeg
 RUN apt-get -qq update \
