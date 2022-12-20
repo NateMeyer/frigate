@@ -161,6 +161,12 @@ RUN if [ "${TARGETARCH}" = "arm" ]; \
     && echo "extra-index-url=https://www.piwheels.org/simple" >> /etc/pip.conf; \
     fi
 
+# Build pycuda
+COPY docker/build_pycuda.sh /build_pycuda.sh
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+    ./build_pycuda.sh; \
+    fi
+
 COPY requirements.txt /requirements.txt
 RUN pip3 install -r requirements.txt
 
@@ -175,6 +181,8 @@ COPY --from=go2rtc /rootfs/ /
 COPY --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --from=s6-overlay /rootfs/ /
 COPY --from=models /rootfs/ /
+# CUDA Toolkit for PYCuda
+COPY --from=wheels /usr/local/cuda-11.7/ /usr/local/cuda-11.7/
 COPY docker/rootfs/ /
 
 
@@ -199,6 +207,11 @@ RUN --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
     pip3 install -U /deps/wheels/*.whl
 
 COPY --from=deps-rootfs / /
+
+RUN  if [ "${TARGETARCH}" = "amd64" ]; \
+    then ln -s /usr/local/cuda-11.7 /usr/local/cuda && \
+    echo "/usr/local/cuda/lib64" >> /etc/ld.so.conf.d/cuda.conf; \
+    fi
 
 RUN ldconfig
 
