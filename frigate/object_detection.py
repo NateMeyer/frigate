@@ -45,6 +45,7 @@ class LocalObjectDetector(ObjectDetector):
             self.labels = {}
         else:
             self.labels = load_labels(labels)
+            logger.debug(f"Using Labels: {self.labels}")
 
         if detector_config:
             self.input_transform = tensor_transform(detector_config.model.input_tensor)
@@ -55,14 +56,15 @@ class LocalObjectDetector(ObjectDetector):
 
     def detect(self, tensor_input, threshold=0.4):
         detections = []
-
         raw_detections = self.detect_raw(tensor_input)
 
         for d in raw_detections:
+            logger.debug(f"Processing Raw Object {d}")
             if int(d[0]) < 0 or int(d[0]) >= len(self.labels):
                 logger.warning(f"Raw Detect returned invalid label: {d}")
                 continue
             if d[1] < threshold:
+                logger.debug(f"Raw Object below threshold: {d}")
                 break
             detections.append(
                 (self.labels[int(d[0])], float(d[1]), (d[2], d[3], d[4], d[5]))

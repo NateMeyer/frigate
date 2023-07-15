@@ -274,6 +274,7 @@ class TensorRtDetector(DetectionApi):
         # O - class id
         # 1 - score
         # 2..5 - a value between 0 and 1 of the box: [top, left, bottom, right]
+        logger.debug(f"Running detect on input of shape {tensor_input.shape}")
 
         # normalize
         if self.input_shape[-1] != trt.int8:
@@ -304,6 +305,7 @@ class TensorRtDetector(DetectionApi):
         # put result into the correct order and limit to top 20
         detections = ordered[:, [5, 4, 1, 0, 3, 2]][:20]
         # pad to 20x6 shape
+        logger.debug(f"Raw: returning {len(detections)} detected objects")
         append_cnt = 20 - len(detections)
         if append_cnt > 0:
             detections = np.append(
