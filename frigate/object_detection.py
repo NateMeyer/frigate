@@ -57,7 +57,7 @@ class LocalObjectDetector(ObjectDetector):
     def detect(self, tensor_input, threshold=0.4):
         detections = []
         raw_detections = self.detect_raw(tensor_input)
-
+        logger.debug(f"Running LocalObjectDetector detect()")
         for d in raw_detections:
             logger.debug(f"Processing Raw Object {d}")
             if int(d[0]) < 0 or int(d[0]) >= len(self.labels):
@@ -73,6 +73,7 @@ class LocalObjectDetector(ObjectDetector):
         return detections
 
     def detect_raw(self, tensor_input):
+        logger.debug(f"Running LocalObjectDetector detect_raw()")
         if self.input_transform:
             tensor_input = np.transpose(tensor_input, self.input_transform)
         return self.detect_api.detect_raw(tensor_input=tensor_input)
@@ -220,8 +221,14 @@ class RemoteObjectDetector:
         # if it timed out
         if result is None:
             return detections
+        
+        logger.debug(f"RemoteObjectDetector received detections shape {self.out_np_shm.shape}, len {len(self.out_np_shm)}")
 
         for d in self.out_np_shm:
+            logger.debug(f"Processing SHM Raw Object {d}")
+            if int(d[0]) < 0 or int(d[0]) >= len(self.labels):
+                logger.warning(f"Obj Detect returned invalid object: {d}")
+                continue
             if d[1] < threshold:
                 break
             detections.append(
