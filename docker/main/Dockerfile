@@ -5,7 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 FROM debian:11 AS base
 
-FROM --platform=linux/amd64 debian:11 AS base_amd64
+FROM --platform=${BUILDPLATFORM} debian:11 AS base_host
 
 FROM debian:11-slim AS slim-base
 
@@ -43,7 +43,7 @@ RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.6.2/
 #
 ####
 # Download and Convert OpenVino model
-FROM base_amd64 AS ov-converter
+FROM base_host AS ov-converter
 ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
